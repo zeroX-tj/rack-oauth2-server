@@ -168,7 +168,9 @@ module Rack
         @options = options || Server.options
         @options.authenticator ||= authenticator
         @options.access_token_path ||= "/oauth/access_token"
+        @options.access_token_path = [@options.access_token_path] unless @options.access_token_path.kind_of?(Array)
         @options.authorize_path ||= "/oauth/authorize"
+        @options.authorize_path = [@options.authorize_path] unless @options.authorize_path.kind_of?(Array)
         @options.authorization_types ||=  %w{code token}
         @options.param_authentication ||= false
       end
@@ -185,9 +187,9 @@ module Rack
 
         # 3.  Obtaining End-User Authorization
         # Flow starts here.
-        return request_authorization(request, logger) if request.path == options.authorize_path
+        return request_authorization(request, logger) if options.authorize_path.include?(request.path)
         # 4.  Obtaining an Access Token
-        return respond_with_access_token(request, logger) if request.path == options.access_token_path
+        return respond_with_access_token(request, logger) if options.access_token_path.include(request.path)
 
         # 5.  Accessing a Protected Resource
         if request.authorization
