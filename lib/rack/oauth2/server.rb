@@ -168,9 +168,7 @@ module Rack
         @options = options || Server.options
         @options.authenticator ||= authenticator
         @options.access_token_path ||= "/oauth/access_token"
-        @options.access_token_path = [@options.access_token_path] unless @options.access_token_path.kind_of?(Array)
         @options.authorize_path ||= "/oauth/authorize"
-        @options.authorize_path = [@options.authorize_path] unless @options.authorize_path.kind_of?(Array)
         @options.authorization_types ||=  %w{code token}
         @options.param_authentication ||= false
       end
@@ -187,9 +185,9 @@ module Rack
 
         # 3.  Obtaining End-User Authorization
         # Flow starts here.
-        return request_authorization(request, logger) if options.authorize_path.include?(request.path)
+        return request_authorization(request, logger) if options.authorize_path == request.path
         # 4.  Obtaining an Access Token
-        if options.access_token_path.include(request.path)
+        if options.access_token_path == request.path
            if env['CONTENT_TYPE'] =~ /^application\/json/ && request.post?
               env.update('rack.request.form_hash' => ActiveSupport::JSON.decode(env['rack.input'].read),'rack.request.form_input' => env['rack.input'])
            end
