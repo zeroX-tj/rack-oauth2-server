@@ -153,7 +153,7 @@ module Rack
       #   end
       Options = Struct.new(:access_token_path, :authenticator, :authorization_types,
         :authorize_path, :database, :host, :param_authentication, :path, :realm, 
-        :expires_in,:logger)
+        :expires_in,:logger,:assertion_handler)
 
       # Global options. This is what we set during configuration (e.g. Rails'
       # config/application), and options all handlers inherit by default.
@@ -188,10 +188,10 @@ module Rack
         return request_authorization(request, logger) if options.authorize_path == request.path
         # 4.  Obtaining an Access Token
         if options.access_token_path == request.path
-           if env['CONTENT_TYPE'] =~ /^application\/json/ && request.post?
-              env.update('rack.request.form_hash' => ActiveSupport::JSON.decode(env['rack.input'].read),'rack.request.form_input' => env['rack.input'])
-           end
-           return respond_with_access_token(request, logger) 
+          if env['CONTENT_TYPE'] =~ /^application\/json/ && request.post?
+            env.update('rack.request.form_hash' => ActiveSupport::JSON.decode(env['rack.input'].read),'rack.request.form_input' => env['rack.input'])
+          end
+          return respond_with_access_token(request, logger) 
         end
         # 5.  Accessing a Protected Resource
         if request.authorization
@@ -250,7 +250,7 @@ module Rack
         end
       end
 
-    protected
+      protected
 
       # Get here for authorization request. Check the request parameters and
       # redirect with an error if we find any issue. Otherwise, create a new
@@ -382,6 +382,18 @@ module Rack
             identity = options.authenticator.call(*args)
             raise InvalidGrantError, "Username/password do not match" unless identity
             access_token = AccessToken.get_token_for(identity, client, requested_scope, options.expires_in)
+          when "assertion"
+            raise UnsupportedGrantType unless options.assertion_handler
+            ['assertion_type','assertion'].each do |param|
+              next if request.POST.has_key?(param)
+              @error = INVALID_REQUEST
+              @error_description = "Missing required parameter #{param}"
+              return [400, { "Content-Type"=>"application/json", "Cache-Control"=>"no-store" }, [{ :error=>'INVALID_REQUEST', :error_description=>"Missing required parameter #{param}" }.to_json]]
+            end
+            args = [request.POST['assertion_type'],request.POST['assertion']]
+            identity = options.assertion_handler.call(*args)
+            raise InvalidGrantError, "No user found using assertion #{request.POST['assertion_type']}" unless identity
+            access_token = AccessToken.get_token_for(identity, client, requested_scope, options.expires_in)
           else
             raise UnsupportedGrantType
           end
@@ -394,7 +406,7 @@ module Rack
           logger.error "RO2S: Access token request error #{error.code}: #{error.message}" if logger
           return unauthorized(request, error) if InvalidClientError === error && request.basic?
           return [400, { "Content-Type"=>"application/json", "Cache-Control"=>"no-store" }, 
-                  [{ :error=>error.code, :error_description=>error.message }.to_json]]
+            [{ :error=>error.code, :error_description=>error.message }.to_json]]
         end
       end
 
@@ -462,7 +474,7 @@ module Rack
         # token.
         def credentials
           basic? ? authorization.gsub(/\n/, "").split[1].unpack("m*").first.split(/:/, 2) :
-          oauth? ? authorization.gsub(/\n/, "").split[1] : nil
+            oauth? ? authorization.gsub(/\n/, "").split[1] : nil
         end
       end
 
