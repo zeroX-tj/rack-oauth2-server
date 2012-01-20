@@ -386,8 +386,6 @@ module Rack
             raise UnsupportedGrantType unless options.assertion_handler
             ['assertion_type','assertion'].each do |param|
               next if request.POST.has_key?(param)
-              @error = INVALID_REQUEST
-              @error_description = "Missing required parameter #{param}"
               return [400, { "Content-Type"=>"application/json", "Cache-Control"=>"no-store" }, [{ :error=>'INVALID_REQUEST', :error_description=>"Missing required parameter #{param}" }.to_json]]
             end
             args = [request.POST['assertion_type'],request.POST['assertion']]
