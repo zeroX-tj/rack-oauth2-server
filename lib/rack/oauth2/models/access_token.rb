@@ -21,14 +21,27 @@ module Rack
           def get_token_for(identity, client, scope, expires = nil)
             raise ArgumentError, "Identity must be String or Integer" unless String === identity || Integer === identity
             scope = Utils.normalize_scope(scope) & client.scope # Only allowed scope
-            unless token = collection.find_one({ :identity=>identity, :scope=>scope, :client_id=>client.id, :revoked=>nil })
-              expires_at = Time.now.to_i + expires if expires && expires != 0
-              token = { :_id=>Server.secure_random, :identity=>identity, :scope=>scope,
-                        :client_id=>client.id, :created_at=>Time.now.to_i,
-                        :expires_at=>expires_at, :revoked=>nil }
-              collection.insert token
-              Client.collection.update({ :_id=>client.id }, { :$inc=>{ :tokens_granted=>1 } })
+
+            token = collection.find_one({
+              :$or=>[{:expires_at=>nil}, {:expires_at=>{:$gt=>Time.now.to_i}}],
+              :identity=>identity, :scope=>scope,
+              :client_id=>client.id, :revoked=>nil})
+
+            unless token
+              return create_token_for(client, scope, identity, expires)
             end
+            Server.new_instance self, token
+          end
+
+          # Creates a new AccessToken for the given client and scope.
+          def create_token_for(client, scope, identity = nil, expires = nil)
+            expires_at = Time.now.to_i + expires if expires && expires != 0
+            token = { :_id=>Server.secure_random, :scope=>scope,
+                      :client_id=>client.id, :created_at=>Time.now.to_i,
+                      :expires_at=>expires_at, :revoked=>nil }
+            token[:identity] = identity if identity
+            collection.insert token
+            Client.collection.update({ :_id=>client.id }, { :$inc=>{ :tokens_granted=>1 } })
             Server.new_instance self, token
           end
 
@@ -77,7 +90,8 @@ module Rack
           end
 
           def collection
-            Server.database["oauth2.access_tokens"]
+            prefix = Server.options[:collection_prefix]
+            Server.database["#{prefix}.access_tokens"]
           end
         end
 
